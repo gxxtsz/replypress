@@ -153,6 +153,67 @@ test('保存所选回答为单页 PDF，保留两层书签、完整正文和链�
   }
 });
 
+test('导出表格里带点状下划线的术语，保留可搜索的单元格文字', { timeout: 30000 }, async () => {
+  const chat = await openChat();
+  let print;
+  try {
+    await chat.locator('#second .markdown').evaluate(body => {
+      document.querySelector('#second figure').remove();
+      body.style.cssText = 'max-width: 768px; margin: auto; background-color: #f9f9f9';
+      body.innerHTML = `
+        <h2>四、主流图形 API 的区别</h2>
+        <table style="width:100%; border-collapse:collapse">
+          <thead><tr><th>API</th><th>主要平台</th><th>编程模型</th><th>特点</th></tr></thead>
+          <tbody>
+            <tr><td><button type="button" class="term">OpenGL<span role="tooltip">术语浮层</span></button></td>
+              <td>桌面跨平台</td><td>隐式状态管理为主</td><td>学习容易，成熟</td></tr>
+            <tr><td><span role="button" class="term">Vulkan</span></td>
+              <td>Windows、Linux、Android 等</td><td>显式资源、命令和同步管理</td><td>控制细，工程复杂</td></tr>
+            <tr><td>Direct3D 11</td><td>Windows</td><td>较高层的设备上下文模型</td><td>成熟，Windows 生态</td></tr>
+            <tr><td>Direct3D 12</td><td>Windows、Xbox</td><td>显式命令列表和资源管理</td><td>低层控制能力强</td></tr>
+            <tr><td><button type="button" class="term"><span>Metal</span></button></td>
+              <td>macOS、iOS 等</td><td>现代命令编码模型</td><td>Apple 平台原生</td></tr>
+            <tr><td><span role="button" style="border-bottom:1px dotted">WebGL</span></td>
+              <td>浏览器</td><td>基于 OpenGL ES 的模型</td><td>Web 兼容性成熟</td></tr>
+            <tr><td><span role="button"><span class="term">WebGPU</span></span></td>
+              <td>浏览器及部分原生实现</td><td>现代资源、Pipeline、命令编码模型</td><td>支持渲染与通用计算<button>复制表格</button></td></tr>
+          </tbody>
+        </table>
+        <div role="toolbar"><button class="term">回答工具栏</button></div>`;
+      const style = document.createElement('style');
+      style.textContent = '.term { all: unset; text-decoration: underline dotted; }' +
+        '#second :is(th, td) { text-align: start; padding: 10px; border-bottom: 1px solid #e7e7e7; }';
+      document.head.append(style);
+    });
+
+    const names = ['OpenGL', 'Vulkan', 'Direct3D 11', 'Direct3D 12', 'Metal', 'WebGL', 'WebGPU'];
+    print = await openPrint(chat.locator('#second ' + control));
+    const answer = print.locator('#answer');
+    const terms = answer.locator('tbody td:first-child');
+    assert.deepEqual(await terms.allTextContents(), names);
+    assert.equal(await terms.first().locator('span').evaluate(term => getComputedStyle(term).textDecorationStyle), 'dotted');
+    assert.equal(await answer.locator('button,[role="button"]').count(), 0);
+    assert.doesNotMatch(await answer.textContent(), /术语浮层|复制表格|回答工具栏/);
+
+    const loading = await savePdf(print, '四、主流图形 API 的区别.pdf');
+    try {
+      const pdf = await loading.promise;
+      assert.equal(pdf.numPages, 1);
+      const page = await pdf.getPage(1);
+      const text = await page.getTextContent();
+      const apiColumn = text.items.filter(item => item.str && names.includes(item.str.trim()));
+      assert.deepEqual(apiColumn.map(item => item.str.trim()), names);
+      assert.ok(apiColumn.every(item => Math.abs(item.transform[4] - apiColumn[0].transform[4]) < 1),
+        '七个名称应在 PDF 的同一列');
+    } finally {
+      await loading.destroy();
+    }
+  } finally {
+    await print?.close();
+    await chat.close();
+  }
+});
+
 test('保留内嵌 SVG 的矢量和比例，打印高度溢出时重新排成一页', { timeout: 45000 }, async () => {
   const chat = await openChat();
   let print;

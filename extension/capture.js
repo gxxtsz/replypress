@@ -4,11 +4,13 @@ globalThis.ReplyPressCapture = (() => {
   const model = globalThis.ReplyPressDocument;
   const htmlNamespace = 'http://www.w3.org/1999/xhtml';
   const messageBoundary = '[data-message-author-role],[data-chatgpt-search-unit-key]';
+  const buttonSelector = 'button,[role="button"]';
+  const proseSelector = 'p,li,dt,dd,td,th,caption,figcaption,blockquote,h1,h2,h3,h4,h5,h6';
   const omitted = [
     '[data-replypress-control]', '[hidden]', '[inert]', '[aria-hidden="true"]', '.sr-only',
-    '[role="toolbar"]', '[role="menu"]', '[role="tooltip"]', '[role="button"]',
+    '[role="toolbar"]', '[role="menu"]', '[role="tooltip"]',
     '[data-testid*="reasoning" i]', '[data-testid*="thinking" i]', '[data-testid*="thought" i]',
-    'details:not([open])', 'button', 'form', 'script', 'style', 'template',
+    'details:not([open])', 'form', 'script', 'style', 'template',
     'iframe', 'object', 'embed', 'canvas', 'video', 'audio'
   ].join(',');
   const mathWrapper = '.katex-display,.katex,mjx-container';
@@ -22,8 +24,27 @@ globalThis.ReplyPressCapture = (() => {
     return !element.checkVisibility && style.visibility === 'visible' && element.getClientRects().length > 0;
   }
 
+  function hasDottedUnderline(element) {
+    const style = getComputedStyle(element);
+    return (style.textDecorationStyle === 'dotted' && style.textDecorationLine.includes('underline'))
+      || (style.borderBottomStyle === 'dotted' && Number.parseFloat(style.borderBottomWidth) > 0);
+  }
+
+  function isInlineTerm(element) {
+    // 正文和表格中的术语标签可以有按钮语义。点状下划线可能设在按钮上，也可能设在文字层。
+    // 仅识别有可见文字样式的正文标签，避免把单元格里的复制等操作按钮带进导出。
+    return element.namespaceURI === htmlNamespace && element.parentElement?.closest(proseSelector)
+      && element.textContent.trim() && (hasDottedUnderline(element)
+        || [...element.children].some(child => child.matches('span') && hasDottedUnderline(child)));
+  }
+
   function isVisible(element) {
-    return element?.isConnected && !element.closest(omitted) && hasVisibleBox(element);
+    if (!element?.isConnected || element.closest(omitted) || !hasVisibleBox(element)) return false;
+    // 正文容器的识别和采集使用同一规则，避免只有术语标签的回答被当成空回答。
+    for (let button = element.closest(buttonSelector); button; button = button.parentElement?.closest(buttonSelector)) {
+      if (!isInlineTerm(button)) return false;
+    }
+    return true;
   }
 
   function hasContent(element) {
@@ -282,6 +303,8 @@ globalThis.ReplyPressCapture = (() => {
       visit(depth);
       if (node.nodeType === Node.TEXT_NODE) return [readText(node.data)];
       if (node.nodeType !== Node.ELEMENT_NODE || node.matches(omitted)) return [];
+      const isButton = node.matches(buttonSelector);
+      if (isButton && !isInlineTerm(node)) return [];
       if (!hasVisibleBox(node)) {
         const whitespace = inCode && node.matches('span') && /^\s+$/.test(node.textContent)
           && getComputedStyle(node).display !== 'none';
@@ -305,7 +328,8 @@ globalThis.ReplyPressCapture = (() => {
         if (fallback) return [makeElement('span', [readText(fallback)])];
       }
 
-      const tag = node.localName;
+      // 术语标签以静态 span 输出，沿用正文采集保留文字、格式和点状下划线。
+      const tag = isButton ? 'span' : node.localName;
       if (tag === 'input') {
         return node.type === 'checkbox' && node.disabled ? [node.checked ? '☑ ' : '☐ '] : [];
       }
