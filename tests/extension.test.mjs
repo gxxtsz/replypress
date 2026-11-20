@@ -265,6 +265,75 @@ test('临时图源和允许跨域读取的 SVG 地址保持矢量，PNG 保留�
   }
 });
 
+test('已加载的 ChatGPT 搜图配图写入 PDF，预览加载失败时保留替代文字', { timeout: 30000 }, async () => {
+  const chat = await openChat();
+  const cdn = 'https://images.openai.com/static-rsc-4/replypress-';
+  const inline = cdn + 'inline?purpose=inline';
+  const unavailable = cdn + 'unavailable?purpose=inline';
+  const thumbnail = cdn + 'thumbnail?purpose=thumbnail';
+  const matchesImage = url => url.href.startsWith(cdn);
+  const previewRequests = [];
+  let print;
+  try {
+    const png = Buffer.from(await chat.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 48;
+      canvas.height = 32;
+      const drawing = canvas.getContext('2d');
+      drawing.fillStyle = '#17665a';
+      drawing.fillRect(0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/png').split(',')[1];
+    }), 'base64');
+    await context.route(matchesImage, route => {
+      const request = route.request();
+      if (request.resourceType() === 'image' && request.frame().url().startsWith('chrome-extension:')) {
+        previewRequests.push({ url: request.url(), referer: request.headers().referer });
+        if (request.url() === unavailable) return route.abort();
+      }
+      return route.fulfill({
+        contentType: 'image/png',
+        headers: { 'Access-Control-Allow-Origin': 'https://unrelated.example.test' },
+        body: png
+      });
+    });
+    await chat.evaluate(images => {
+      document.querySelector('#second figure').remove();
+      const body = document.querySelector('#second .markdown');
+      body.innerHTML = '<h2>搜图配图验证</h2>';
+      for (const [src, alt] of images) {
+        const image = document.createElement('img');
+        image.src = src;
+        image.alt = alt;
+        body.append(image);
+      }
+    }, [[inline, '已加载的搜图配图'], [unavailable, '预览无法加载的配图'], [thumbnail, '其他 CDN 地址']]);
+    await chat.locator('#second .markdown img').evaluateAll(images => Promise.all(images.map(image => image.decode())));
+
+    print = await openPrint(chat.locator('#second ' + control));
+    const image = print.getByRole('img', { name: '已加载的搜图配图' });
+    assert.equal(await image.getAttribute('src'), inline);
+    assert.equal(await image.evaluate(element => element.naturalWidth), 48);
+    assert.deepEqual(await print.locator('#answer .image-note').allTextContents(), [
+      '［图片不可用：预览无法加载的配图］', '［图片不可用：其他 CDN 地址］'
+    ]);
+    assert.deepEqual(previewRequests.map(request => request.url).sort(), [inline, unavailable].sort());
+    assert.ok(previewRequests.every(request => request.referer === undefined));
+
+    const loading = await savePdf(print, '搜图配图验证.pdf');
+    try {
+      const page = await (await loading.promise).getPage(1);
+      const { fnArray } = await page.getOperatorList();
+      assert.equal(fnArray.filter(op => op === OPS.paintImageXObject || op === OPS.paintInlineImageXObject).length, 1);
+    } finally {
+      await loading.destroy();
+    }
+  } finally {
+    await print?.close();
+    await chat.close();
+    await context.unroute(matchesImage);
+  }
+});
+
 test('短回答保留页首和页尾留白，无标题时大纲为空', { timeout: 30000 }, async () => {
   const chat = await openChat();
   let print;

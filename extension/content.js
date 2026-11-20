@@ -14,8 +14,15 @@
   const body = '.markdown,[data-testid="assistant-message-content"]';
   const streaming = '[data-talvt-turn-state="in_progress"],[data-is-streaming="true"],.result-streaming';
   const controlSelector = '[data-replypress-control]';
+  const disconnected = 'ReplyPress 已与当前页面断开。请刷新页面后再导出。';
   const controls = new Map();
   let scheduled = false;
+
+  function requireRuntime() {
+    const runtime = globalThis.chrome?.runtime;
+    if (!runtime?.id || typeof runtime.sendMessage !== 'function') throw Error(disconnected);
+    return runtime;
+  }
 
   function replyBodies(root) {
     const hasAuthor = root.matches(assistant);
@@ -95,6 +102,7 @@
       control.busy = button.disabled = true;
       status.textContent = '正在准备预览…';
       try {
+        requireRuntime();
         const address = location.href;
         const messageKey = root.getAttribute('data-chatgpt-search-unit-key');
         const checkReply = reply => {
@@ -106,11 +114,12 @@
         checkReply(ready);
         const snapshot = await capture(ready.sources);
         checkReply(ready);
-        const response = await chrome.runtime.sendMessage({ type: messages.open, snapshot });
+        const response = await requireRuntime().sendMessage({ type: messages.open, snapshot });
         if (!response?.ok) throw Error(response?.error || '无法打开预览页。');
         status.textContent = '';
       } catch (error) {
-        status.textContent = error instanceof Error ? error.message : '无法打开预览页。';
+        const message = error instanceof Error ? error.message : '无法打开预览页。';
+        status.textContent = message === 'Extension context invalidated.' ? disconnected : message;
       } finally {
         control.busy = false;
         schedule();

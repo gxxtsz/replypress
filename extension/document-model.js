@@ -103,6 +103,11 @@ globalThis.ReplyPressDocument = (() => {
     return /^data:image\/svg\+xml(?:;charset=[a-z\d_-]+|;utf8)?(?:;base64)?,./is.test(value);
   }
 
+  function isInlineImageSource(value) {
+    return typeof value === 'string' && value.length <= 2048
+      && /^https:\/\/images\.openai\.com\/static-rsc-\d+\/[\w-]+\?purpose=inline$/.test(value);
+  }
+
   function imageNote(alt) {
     return alt ? '［图片不可用：' + alt + '］' : '［图片不可用］';
   }
@@ -172,7 +177,7 @@ globalThis.ReplyPressDocument = (() => {
     }
     if (tag === 'img') {
       attrs.alt = valueOf('alt').slice(0, 500);
-      if (isImageData(source.src)) attrs.src = source.src;
+      if (isImageData(source.src) || isInlineImageSource(source.src)) attrs.src = source.src;
       for (const name of ['width', 'height']) {
         if (/^[1-9]\d{0,3}$/.test(valueOf(name))) attrs[name] = valueOf(name);
       }
@@ -227,6 +232,7 @@ globalThis.ReplyPressDocument = (() => {
       }
       const ns = inSvg ? svgNamespace : inMath ? mathNamespace : null;
       const element = ns ? doc.createElementNS(ns, tag) : doc.createElement(tag);
+      if (tag === 'img') element.referrerPolicy = 'no-referrer';
       for (const [name, value] of Object.entries(attrs)) element.setAttribute(name, value);
       if (Number.isInteger(node.style) && node.style >= 0 && styles[node.style]) {
         const key = (inSvg ? 'svg:' : 'html:') + node.style;
@@ -259,6 +265,6 @@ globalThis.ReplyPressDocument = (() => {
   return Object.freeze({
     mathNamespace, svgNamespace, htmlTags, mathTags, svgTags, limits, messages, snapshotVersion, reloadError, sizeError,
     safeAttributes, safeSvgAttributes, safeStyle,
-    imageTypes, isImageData, isSvgImageData, imageNote, validSnapshot, render
+    imageTypes, isImageData, isSvgImageData, isInlineImageSource, imageNote, validSnapshot, render
   });
 })();

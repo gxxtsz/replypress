@@ -343,9 +343,11 @@ globalThis.ReplyPressCapture = (() => {
     for (const { image, source, attrs } of images) {
       if (!remainingImages) break;
       const data = await snapshotImage(image, source, remainingImages, signal);
-      if (!data) continue;
-      attrs.src = data;
-      remainingImages -= data.length;
+      // 跨域搜图配图可能只允许直接显示。预览页可沿用已加载的图片 CDN 地址。
+      const imageSource = data ?? (model.isInlineImageSource(source) ? source : null);
+      if (!imageSource || imageSource.length > remainingImages) continue;
+      attrs.src = imageSource;
+      remainingImages -= imageSource.length;
     }
     if (!model.validSnapshot(snapshot)) throw Error(model.sizeError);
     return snapshot;
