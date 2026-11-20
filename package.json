@@ -1,0 +1,17 @@
+{
+  "name": "replypress",
+  "version": "0.1.2",
+  "private": true,
+  "description": "将 ChatGPT 的单条回答通过浏览器打印保存为 PDF。",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "6.5.438",
+    "playwright": "1.65.1"
+  }
+}

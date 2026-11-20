@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>ReplyPress 导出预览</title>
+  <link rel="stylesheet" href="print.css" id="print-styles">
+  <script defer src="document-model.js"></script>
+  <script defer src="pdf-output.js"></script>
+  <script defer src="print-page.js"></script>
+</head>
+<body>
+  <header class="print-toolbar">
+    <p id="print-status" role="status">正在准备预览…</p>
+    <button id="save-button" type="button" disabled>保存 PDF</button>
+    <button id="print-button" type="button" disabled>打印</button>
+  </header>
+  <main id="answer" dir="auto" hidden></main>
+</body>
+</html>
